@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+import asyncio
+from bleak import BleakScanner, BleakClient
+import sys
+#import time
+
+#import logging
+#logging.basicConfig(level=logging.DEBUG)
+#logging.getLogger("bleak").setLevel(logging.DEBUG)
+
+GREEN = "\033[94m"
+RESET = "\033[0m"
+
+# 接続先のBLEデバイス情報
+ADDRESS = "D8:3A:DD:06:98:B4"  # デバイスのMACアドレス
+CHAR_UUID = "c1da1ac1-a3e8-4d81-a0e6-5bbee9802401"  # 書き込み対象のキャラクタリスティックUUID
+
+def handle_notify(_, data):
+    print(data.decode())
+
+async def write_to_characteristic():
+
+    devices = await BleakScanner.discover(timeout=5)
+    for d in devices:
+        print(f"Found: {d.address} ({d.name})")
+        if d.address == ADDRESS:
+            print(f"discovered: {ADDRESS}")
+            async with BleakClient(d) as client:
+                print("Connected!")
+                print("Type 'exit or quit' to exit")
+
+                # Notifyを有効化
+                # await client.start_notify(CHAR_UUID, handle_notify)
+                
+                # プロンプトを表示させる
+                await client.write_gatt_char(CHAR_UUID, b"")
+                value = await client.read_gatt_char(CHAR_UUID)
+                if value.decode() != '': 
+                    print(value.decode().rstrip(), end="")
+
+                while True:
+                    #user_input = input(f"{GREEN}send_message>> {RESET}")
+                    user_input = input(f"")
+                    try:
+                        if user_input.lower() in ["exit", "quit"]:
+                            sys.exit(0)  # 正常終了
+                            break
+                        await client.write_gatt_char(CHAR_UUID, user_input.encode('utf-8'))
+                        value = await client.read_gatt_char(CHAR_UUID)
+                        if value.decode() != '': 
+                            print(value.decode().rstrip(), end="")
+
+                    except KeyboardInterrupt:
+                        sys.exit(1)  # 異常終了（Ctrl+Cなど）
+                    except Exception as e:
+                        print(f"Exception as: {e}")
+
+# イベントループで実行
+asyncio.run(write_to_characteristic())

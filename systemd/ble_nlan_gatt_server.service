@@ -1,0 +1,18 @@
+[Unit]
+Description=BLE nlan GATT Server
+After=bluetooth.target
+
+[Service]
+ExecStart=/usr/local/bin/start_nlan_server.sh
+Environment=TERM=xterm-256color
+WorkingDirectory=/home
+Restart=on-failure
+RestartSec=5
+User=nlan
+Group=nlan
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+

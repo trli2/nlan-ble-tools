@@ -1,8 +1,9 @@
 #!/bin/bash
 
-./bredr_off.sh
-bluetoothctl discoverable on
-./advertise.sh 
+#./bredr_off.sh
+#bluetoothctl discoverable on
+bluetoothctl advertise on
+#./advertise.sh 
 hciconfig
 ./nlan-gatt-server
 

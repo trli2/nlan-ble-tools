@@ -12,6 +12,7 @@ import sys
 import os
 import asyncio
 import threading
+from typing import Union
 
 from random import randint
 
@@ -26,7 +27,10 @@ GATT_SERVICE_IFACE = 'org.bluez.GattService1'
 GATT_CHRC_IFACE =    'org.bluez.GattCharacteristic1'
 GATT_DESC_IFACE =    'org.bluez.GattDescriptor1'
 
-CON_CHRC_UUID = 'c1da1ac1-a3e8-4d81-a0e6-5bbee9802401'
+CON_TX_CHRC_UUID = 'c1da1ac1-a3e8-4d81-a0e6-5bbee9802401'
+CON_TX_DESC_UUID = 'c1da1ac1-a3e8-4d81-a0e6-5bbee9802402'
+CON_RX_CHRC_UUID = 'c1da1ac1-a3e8-4d81-a0e6-5bbee9802403'
+
 TTY_PATH = "/tmp/ttyBLE0"
 
 class InvalidArgsException(dbus.exceptions.DBusException):
@@ -260,56 +264,36 @@ class ConsoleService(Service):
 
     def __init__(self, bus, index):
         Service.__init__(self, bus, index, self.CON_SVC_UUID, True)
-        self.add_characteristic(ConsoleCharacteristic(bus, 0, self))
-
+        self.add_characteristic(ConsoleTxCharacteristic(bus, 0, self))
+        self.add_characteristic(ConsoleRxCharacteristic(bus, 1, self))
 
 """
 Main Characteristic
 """
-class ConsoleCharacteristic(Characteristic):
+
+GREEN = "\033[94m"
+RESET = "\033[0m"
+
+class ConsoleTxCharacteristic(Characteristic):
     """
-    Main characteristic requiring secure connection.
+    Main Tx characteristic requiring secure connection.
     """
     #CON_CHRC_UUID = 'c1da1ac1-a3e8-4d81-a0e6-5bbee9802401'
 
     def __init__(self, bus, index, service):
         Characteristic.__init__(
                 self, bus, index,
-                CON_CHRC_UUID,
-                ['secure-read', 'secure-write', 'notify'],
+                CON_TX_CHRC_UUID,
+                ['secure-read', 'secure-write'],
                 service)
         self.value = b""
         self.command = b""
-        self.notifying = False
-        self.testvalue = [0x31, 0x36]
         self.result_str = ""
         self.tty_in = open(TTY_PATH, "wb", buffering=0)
-        self.tty_out = open(TTY_PATH, "rb", buffering=0)
 
         self.add_descriptor(ConsoleTxDescriptor(bus, 0, self))
         self.add_descriptor(
                 CharacteristicUserDescriptionDescriptor(bus, 1, self))
-        # CCCD（Client Characteristic Configuration Descriptor）を追加
-
-        self.add_descriptor(ConsoleCCCDDescriptor(bus, 2, self))
-
-    async def notify_loop(self):
-        while True:
-            output = self.tty_out.read(500)
-            if output:
-                print("into tty_out.read")
-                self.result_str = self.result_str + output.decode('utf-8', errors='replace')
-                if self.notifying:
-                    print(f"Output:{output}")
-                    self.send_result(output)
-
-    def send_result(self, output: str):
-        self.PropertiesChanged(
-             GATT_CHRC_IFACE,
-            #{'Value': [dbus.Byte(b) for b in output.encode()]},
-            {'Value': [dbus.Byte(b) for b in output]},
-            []
-        )
 
     def WriteValue(self, value, options):
         try:
@@ -340,14 +324,7 @@ class ConsoleCharacteristic(Characteristic):
         except Exception as e:
             print(f"[WriteValue Exception] {e}")
 
-    def StartNotify(self):
-        if self.notifying:
-            return
-        self.notifying = True
-
-    def StopNotify(self):
-        self.notifying = False
-
+    # Dummy read
     def ReadValue(self, options):
         try:
             print(f"ReadValue:{self.result_str}")
@@ -363,12 +340,11 @@ class ConsoleTxDescriptor(Descriptor):
     """
     Test descriptor
     """
-    TEST_DESC_UUID = 'c1da1ac1-a3e8-4d81-a0e6-5bbee9802402'
 
     def __init__(self, bus, index, characteristic):
         Descriptor.__init__(
                 self, bus, index,
-                self.TEST_DESC_UUID,
+                self.CON_TX_DESC_UUID,
                 ['read', 'write'],
                 characteristic)
 
@@ -402,6 +378,72 @@ class CharacteristicUserDescriptionDescriptor(Descriptor):
         if not self.writable:
             raise NotPermittedException()
         self.value = value
+
+
+class ConsoleRxCharacteristic(Characteristic):
+    """
+    Main Rx characteristic requiring secure connection.
+    """
+
+    def __init__(self, bus, index, service):
+        Characteristic.__init__(
+                self, bus, index,
+                CON_RX_CHRC_UUID,
+                ['notify'],
+                service)
+        self.notifying = False
+        self.result_str = ""
+        self.tty_out = open(TTY_PATH, "rb", buffering=0)
+
+        # CCCD（Client Characteristic Configuration Descriptor）を追加
+        self.add_descriptor(ConsoleCCCDDescriptor(bus, 2, self))
+
+    async def notify_loop(self):
+        while True:
+            output = self.tty_out.read(500)
+            if output:
+                print("into tty_out.read")
+                self.result_str = self.result_str + output.decode('utf-8', errors='replace')
+                if self.notifying:
+                    print(f"Output:{output}")
+                    self.send_result(output)
+
+    def send_result(self, output: str):
+        length = len(output)
+        print(f"byte length: {length}")
+
+        self.PropertiesChanged(
+             GATT_CHRC_IFACE,
+            {'Value': [dbus.Byte(b) for b in output]},
+            []
+        )
+
+    def StartNotify(self):
+        if self.notifying:
+            return
+        self.notifying = True
+
+    def StopNotify(self):
+        self.notifying = False
+
+
+class ConsoleTxDescriptor(Descriptor):
+    """
+    Test descriptor
+    """
+    TEST_DESC_UUID = 'c1da1ac1-a3e8-4d81-a0e6-5bbee9802402'
+
+    def __init__(self, bus, index, characteristic):
+        Descriptor.__init__(
+                self, bus, index,
+                self.TEST_DESC_UUID,
+                ['read', 'write'],
+                characteristic)
+
+    def ReadValue(self, options):
+        return [
+                dbus.Byte('T'), dbus.Byte('e'), dbus.Byte('s'), dbus.Byte('t')
+        ]
 
 """
 BLEにおいて CCCD (Client Characteristic Configuration Descriptor) は、
@@ -505,7 +547,7 @@ def main():
     # appからConsoleCharacteristicのインスタンスを取得
     for service in app.services:
         for char in service.characteristics:
-            if char.uuid == CON_CHRC_UUID:
+            if char.uuid == CON_RX_CHRC_UUID:
                 con_char = char
 
     mainloop = GLib.MainLoop()

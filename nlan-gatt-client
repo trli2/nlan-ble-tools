@@ -2,7 +2,7 @@
 import asyncio
 from bleak import BleakScanner, BleakClient
 import sys
-#import time
+import time
 
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
@@ -13,10 +13,11 @@ RESET = "\033[0m"
 
 # 接続先のBLEデバイス情報
 ADDRESS = "D8:3A:DD:06:98:B4"  # デバイスのMACアドレス
-CHAR_UUID = "c1da1ac1-a3e8-4d81-a0e6-5bbee9802401"  # 書き込み対象のキャラクタリスティックUUID
+CHAR_TX_UUID = "c1da1ac1-a3e8-4d81-a0e6-5bbee9802401"  # 書き込み対象のキャラクタリスティックUUID
+CHAR_RX_UUID = "c1da1ac1-a3e8-4d81-a0e6-5bbee9802403"  # 書き込み対象のキャラクタリスティックUUID
 
 def handle_notify(_, data):
-    print(data.decode())
+    print(data.decode(), end='')
 
 async def write_to_characteristic():
 
@@ -30,13 +31,13 @@ async def write_to_characteristic():
                 print("Type 'exit or quit' to exit")
 
                 # Notifyを有効化
-                # await client.start_notify(CHAR_UUID, handle_notify)
-                
+                await client.start_notify(CHAR_RX_UUID, handle_notify)             
+                time.sleep(1)
+
                 # プロンプトを表示させる
-                await client.write_gatt_char(CHAR_UUID, b"")
-                value = await client.read_gatt_char(CHAR_UUID)
-                if value.decode() != '': 
-                    print(value.decode().rstrip(), end="")
+                await client.write_gatt_char(CHAR_TX_UUID, b"")
+                value = await client.read_gatt_char(CHAR_TX_UUID)
+                print(value.decode().rstrip(), end="")
 
                 while True:
                     #user_input = input(f"{GREEN}send_message>> {RESET}")
@@ -45,10 +46,10 @@ async def write_to_characteristic():
                         if user_input.lower() in ["exit", "quit"]:
                             sys.exit(0)  # 正常終了
                             break
-                        await client.write_gatt_char(CHAR_UUID, user_input.encode('utf-8'))
-                        value = await client.read_gatt_char(CHAR_UUID)
-                        if value.decode() != '': 
-                            print(value.decode().rstrip(), end="")
+                        await client.write_gatt_char(CHAR_TX_UUID, user_input.encode('utf-8'))
+                        # dummy read to notify
+                        value = await client.read_gatt_char(CHAR_TX_UUID)
+                        print(value.decode().rstrip(), end="")
 
                     except KeyboardInterrupt:
                         sys.exit(1)  # 異常終了（Ctrl+Cなど）
